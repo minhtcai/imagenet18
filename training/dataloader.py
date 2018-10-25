@@ -16,27 +16,46 @@ from tqdm import tqdm
 from training.dist_utils import env_world_size, env_rank
 
 
-def get_loaders(traindir, valdir, sz, bs, fp16=True, val_bs=None, workers=8, rect_val=False, min_scale=0.08,
-                distributed=False):
-    val_bs = val_bs or bs
+def get_loaders(train_path, val_path, size, batch_size: int, fp16: bool = True, val_batch_size=None,
+                num_workers: int = 8, rect_val=False, min_scale=0.08, distributed=False):
+    """
+    
+    Args:
+        train_path: 
+        val_path: 
+        size: 
+        batch_size: 
+        fp16: 
+        val_batch_size: 
+        num_workers: 
+        rect_val: 
+        min_scale: 
+        distributed: 
+
+    Returns:
+
+    """
+
+    val_batch_size = val_batch_size or batch_size
     train_tfms = [
-        transforms.RandomResizedCrop(sz, scale=(min_scale, 1.0)),
+        transforms.RandomResizedCrop(size, scale=(min_scale, 1.0)),
         transforms.RandomHorizontalFlip()
     ]
-    train_dataset = datasets.ImageFolder(traindir, transforms.Compose(train_tfms))
-    train_sampler = (
-        DistributedSampler(train_dataset, num_replicas=env_world_size(), rank=env_rank()) if distributed else None)
 
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=bs, shuffle=(train_sampler is None),
-        num_workers=workers, pin_memory=True, collate_fn=fast_collate,
-        sampler=train_sampler)
+    train_dataset = datasets.ImageFolder(train_path, transforms.Compose(train_tfms))
+    if distributed:
+        train_sampler = DistributedSampler(train_dataset, num_replicas=env_world_size(), rank=env_rank())
+    else:
+        train_sampler = None
 
-    val_dataset, val_sampler = create_validation_set(valdir, val_bs, sz, rect_val=rect_val, distributed=distributed)
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset,
-        num_workers=workers, pin_memory=True, collate_fn=fast_collate,
-        batch_sampler=val_sampler)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=(train_sampler is None),
+                                               num_workers=num_workers, pin_memory=True, collate_fn=fast_collate,
+                                               sampler=train_sampler)
+
+    val_dataset, val_sampler = create_validation_set(val_path, val_batch_size, size, rect_val=rect_val,
+                                                     distributed=distributed)
+    val_loader = torch.utils.data.DataLoader(val_dataset, num_workers=num_workers, pin_memory=True,
+                                             collate_fn=fast_collate, batch_sampler=val_sampler)
 
     train_loader = BatchTransformDataLoader(train_loader, fp16=fp16)
     val_loader = BatchTransformDataLoader(val_loader, fp16=fp16)

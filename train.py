@@ -4,29 +4,31 @@ import argparse
 import ncluster
 import os
 
-IMAGE_NAME = 'pytorch.imagenet.source.v7'
-INSTANCE_TYPE = 'p3.16xlarge'
-NUM_GPUS = 8
+# IMAGE_NAME = 'pytorch.imagenet.source.v7'
+# INSTANCE_TYPE = 'p3.16xlarge'
+# NUM_GPUS = 8
 
-ncluster.set_backend('aws')
+# ncluster.set_backend('aws')
 parser = argparse.ArgumentParser()
 parser.add_argument('--name', type=str, default='imagenet',
                     help="name of the current run, used for machine naming and tensorboard visualization")
-parser.add_argument('--machines', type=int, default=16,
-                    help="how many machines to use")
+parser.add_argument('--machines', type=int, default=1, help="how many machines to use")
 args = parser.parse_args()
 
 # 109:12 to 93.00
 # events: https://s3.amazonaws.com/yaroslavvb/logs/imagenet-1
 # logs: https://s3.amazonaws.com/yaroslavvb/logs/imagenet1.tar
 lr = 1.0
-bs = [512, 224, 128]  # largest batch size that fits in memory for each image size
+# bs = [512, 224, 128]  # largest batch size that fits in memory for each image size
+bs = [64, 32, 16]  # largest batch size that fits in memory for each image size
 bs_scale = [x / bs[0] for x in bs]
 one_machine = [
-    {'ep': 0, 'sz': 128, 'bs': bs[0], 'trndir': '-sz/160'},
+    # {'ep': 0, 'sz': 128, 'bs': bs[0], 'trndir': '-sz/160'},
+    {'ep': 0, 'sz': 128, 'bs': bs[0]},
     {'ep': (0, 7), 'lr': (lr, lr * 2)},  # lr warmup is better with --init-bn0
     {'ep': (7, 13), 'lr': (lr * 2, lr / 4)},  # trying one cycle
-    {'ep': 13, 'sz': 224, 'bs': bs[1], 'trndir': '-sz/352', 'min_scale': 0.087},
+    # {'ep': 13, 'sz': 224, 'bs': bs[1], 'trndir': '-sz/352', 'min_scale': 0.087},
+    {'ep': 13, 'sz': 224, 'bs': bs[1], 'min_scale': 0.087},
     {'ep': (13, 22), 'lr': (lr * bs_scale[1], lr / 10 * bs_scale[1])},
     {'ep': (22, 25), 'lr': (lr / 10 * bs_scale[1], lr / 100 * bs_scale[1])},
     {'ep': 25, 'sz': 288, 'bs': bs[2], 'min_scale': 0.5, 'rect_val': True},
@@ -187,8 +189,10 @@ def main():
     for i, task in enumerate(job.tasks):
         dist_params = f'--nproc_per_node=8 --nnodes={args.machines} --node_rank={i} ' \
                       f'--master_addr={job.tasks[0].ip} --master_port={6006}'
+
         cmd = f'{nccl_params} python -m torch.distributed.launch {dist_params} ' \
               f'training/train_imagenet_nv.py {training_params}'
+
         task.run(f'echo {cmd} > {job.logdir}/task-{i}.cmd')  # save command-line
         task.run(cmd, non_blocking=True)
 

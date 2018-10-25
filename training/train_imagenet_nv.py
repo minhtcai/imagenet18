@@ -15,7 +15,7 @@ import torch.distributed as dist
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
-
+from pathlib import Path
 # import models
 from training.fp16util import (model_grads_to_master_grads,
                                network_to_half,
@@ -31,16 +31,32 @@ from training import dist_utils
 from training.logger import TensorboardLogger, FileLogger
 from training.meter import AverageMeter, NetworkMeter, TimeMeter
 
+lr = 1.0
+# bs = [512, 224, 128]  # largest batch size that fits in memory for each image size
+bs = [128, 224, 128]  # largest batch size that fits in memory for each image size
+bs_scale = [x / bs[0] for x in bs]
+
+phases = [
+    {'ep': 0, 'sz': 128, 'bs': bs[0]},
+    {'ep': (0, 7), 'lr': (lr, lr * 2)},
+    {'ep': (7, 13), 'lr': (lr * 2, lr / 4)},
+    {'ep': 13, 'sz': 224, 'bs': bs[1], 'min_scale': 0.087},
+    {'ep': (13, 22), 'lr': (lr * bs_scale[1], lr / 10 * bs_scale[1])},
+    {'ep': (22, 25), 'lr': (lr / 10 * bs_scale[1], lr / 100 * bs_scale[1])},
+    {'ep': 25, 'sz': 288, 'bs': bs[2], 'min_scale': 0.5, 'rect_val': True},
+    {'ep': (25, 28), 'lr': (lr / 100 * bs_scale[2], lr / 1000 * bs_scale[2])}
+]
+
 
 def get_parser():
     parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
     parser.add_argument('data', metavar='DIR', help='path to dataset')
-    parser.add_argument('--phases', type=str,
+    parser.add_argument('--phases', type=str, default=str(phases),
                         help='Specify epoch order of data resize and learning rate schedule: '
                              '[{"ep":0,"sz":128,"bs":64},{"ep":5,"lr":1e-2}]')
-    # parser.add_argument('--save-dir', type=str, default=Path.cwd(), help='Directory to save logs and models.')
-    parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
-                        help='number of data loading workers (default: 8)')
+    parser.add_argument('--save-dir', type=str, default=Path.cwd(), help='Directory to save logs and models.')
+    parser.add_argument('-j', '--workers', default=12, type=int, metavar='N',
+                        help='number of data loading workers (default: 12)')
     parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                         help='manual epoch number (useful on restarts)')
     parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum')
@@ -64,8 +80,7 @@ def get_parser():
     parser.add_argument('--local_rank', default=0, type=int,
                         help='Used for multi-process training. Can either be manually set ' +
                              'or automatically set by using \'python -m multiproc\'.')
-    parser.add_argument('--logdir', default='', type=str,
-                        help='where logs go')
+    parser.add_argument('--logdir', default='runs/debug', type=str, help='where logs go')
     parser.add_argument('--skip-auto-shutdown', action='store_true',
                         help='Shutdown instance at the end of training or failure')
     parser.add_argument('--auto-shutdown-success-delay-mins', default=10, type=int,
@@ -81,6 +96,9 @@ def get_parser():
 cudnn.benchmark = True
 args = get_parser().parse_args()
 
+print(args)
+
+Path(args.logdir).mkdir(exist_ok=True, parents=True)
 # Only want master rank logging to tensorboard
 is_master = (not args.distributed) or (dist_utils.env_rank() == 0)
 is_rank0 = args.local_rank == 0
@@ -106,25 +124,31 @@ def main():
 
     log.console("Loading model")
     model = resnet.resnet50(bn0=args.init_bn0).cuda()
+
     if args.fp16:
         model = network_to_half(model)
     if args.distributed:
         model = dist_utils.DDP(model, device_ids=[args.local_rank], output_device=args.local_rank)
+
     best_top5 = 93  # only save models over 93%. Otherwise it stops to save every time
 
     global model_params, master_params
+
     if args.fp16:
         model_params, master_params = prep_param_lists(model)
     else:
         model_params = master_params = model.parameters()
 
-    optim_params = experimental_utils.bnwd_optim_params(model, model_params,
-                                                        master_params) if args.no_bn_wd else master_params
+    if args.no_bn_wd:
+        optim_params = experimental_utils.bnwd_optim_params(model, model_params, master_params)
+    else:
+        optim_params = master_params
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda()
-    optimizer = torch.optim.SGD(optim_params, 0, momentum=args.momentum,
-                                weight_decay=args.weight_decay)  # start with 0 lr. Scheduler will change this later
+
+    # start with 0 lr. Scheduler will change this later
+    optimizer = torch.optim.SGD(optim_params, 0, momentum=args.momentum, weight_decay=args.weight_decay)
 
     if args.resume:
         checkpoint = torch.load(args.resume, map_location=lambda storage, loc: storage.cuda(args.local_rank))
@@ -134,7 +158,8 @@ def main():
         optimizer.load_state_dict(checkpoint['optimizer'])
 
     # save script so we can reproduce from logs
-    shutil.copy2(os.path.realpath(__file__), f'{args.logdir}')
+    # shutil.copy2(os.path.realpath(__file__), f'{args.logdir}')
+    shutil.copy2(os.path.realpath(__file__), str(args.logdir))
 
     log.console("Creating data loaders (this could take up to 10 minutes if volume needs to be warmed up)")
     phases = eval(args.phases)
@@ -310,7 +335,7 @@ def distributed_predict(input, target, model, criterion):
     return top1, top5, reduced_loss, batch_total
 
 
-class DataManager():
+class DataManager:
     def __init__(self, phases):
         self.phases = self.preload_phase_data(phases)
 
@@ -361,21 +386,22 @@ class DataManager():
         phase['valdir'] = args.data + valdir + '/validation'
 
     def preload_data(self, ep, sz, bs, trndir, valdir, **kwargs):  # dummy ep var to prevent error
+        """Pre-initializes data-loaders. Use set_data to start using it."""
         if 'lr' in kwargs:
             del kwargs['lr']  # in case we mix schedule and data phases
-        """Pre-initializes data-loaders. Use set_data to start using it."""
+
         if sz == 128:
             val_bs = max(bs, 512)
         elif sz == 224:
             val_bs = max(bs, 256)
         else:
             val_bs = max(bs, 128)
-        return dataloader.get_loaders(trndir, valdir, bs=bs, val_bs=val_bs, sz=sz, workers=args.workers,
+        return dataloader.get_loaders(trndir, valdir, batch_size=bs, val_batch_size=val_bs, size=sz, num_workers=args.workers,
                                       distributed=args.distributed, **kwargs)
 
 
 # ### Learning rate scheduler
-class Scheduler():
+class Scheduler:
     def __init__(self, optimizer, phases):
         self.optimizer = optimizer
         self.current_lr = None
@@ -442,10 +468,8 @@ def to_python_float(t):
 
 
 def save_checkpoint(epoch, model, best_top5, optimizer, is_best=False, filename='checkpoint.pth.tar'):
-    state = {
-        'epoch': epoch + 1, 'state_dict': model.state_dict(),
-        'best_top5': best_top5, 'optimizer': optimizer.state_dict(),
-    }
+    state = {'epoch': epoch + 1, 'state_dict': model.state_dict(), 'best_top5': best_top5,
+             'optimizer': optimizer.state_dict(), }
     torch.save(state, filename)
     if is_best:
         shutil.copyfile(filename, f'{args.logdir}/{filename}')
