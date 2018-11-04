@@ -249,7 +249,7 @@ def train(train_loader, model, criterion, optimizer, scheduler, epoch):
         tq.update(batch_size)
 
         lr = scheduler.get_lr(epoch, i + 1, len(train_loader))
-        output_string = f'{losses.average:.4f} Acc@1 = {top1.average:.3f} Acc@5 = {top5.average:.3f} lr = {lr)}'
+        output_string = f'{losses.average:.4f} Acc@1 = {top1.average:.3f} Acc@5 = {top5.average:.3f} lr = {lr}'
 
         tq.set_postfix(loss=output_string)
 
