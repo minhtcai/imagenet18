@@ -241,14 +241,15 @@ def validate(val_loader, model, criterion):
 
         model.eval()
 
-        for i, (inputs, target) in enumerate(val_loader):
+        for i, (inputs, targets) in enumerate(val_loader):
             inputs = inputs.cuda()
+            targets = targets.cuda()
 
             output = model(inputs)
-            loss = criterion(output, target.cuda()).data
+            loss = criterion(output, targets).data
 
             batch_size = inputs.size(0)
-            top1acc, top5acc = accuracy(output.data, target, topk=(1, 5))
+            top1acc, top5acc = accuracy(output.data, targets, topk=(1, 5))
 
             # Eval batch done. Logging results
             losses.update(to_python_float(loss), to_python_float(batch_size))
