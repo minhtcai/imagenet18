@@ -31,17 +31,40 @@ batch_size = [512, 224, 128]  # largest batch size that fits in memory for each 
 batch_size_scale = [x / batch_size[0] for x in batch_size]
 
 phases = [
-    {'epoch': 0, 'size': 128, 'batch_size': batch_size[0]},
-    {'epoch': (0, 7), 'size': 128, 'lr': (lr, lr * 2), 'batch_size': batch_size[0]},
-    {'epoch': (7, 13), 'size': 128, 'lr': (lr * 2, lr / 4), 'batch_size': batch_size[0]},
-    {'epoch': 13, 'size': 224, 'batch_size': batch_size[1], 'min_scale': 0.087},
-    {'epoch': (13, 22), 'size': 224, 'lr': (lr * batch_size_scale[1], lr / 10 * batch_size_scale[1]),
-     'batch_size': batch_size[1]},
-    {'epoch': (22, 25), 'size': 224, 'lr': (lr / 10 * batch_size_scale[1], lr / 100 * batch_size_scale[1]),
-     'batch_size': batch_size[1]},
-    {'epoch': 25, 'size': 288, 'batch_size': batch_size[2], 'min_scale': 0.5},
-    {'epoch': (25, 28), 'size': 288, 'lr': (lr / 100 * batch_size_scale[2], lr / 1000 * batch_size_scale[2]),
-     'batch_size': batch_size[1]}
+    {'epoch': 0,
+     'size': 128,
+     'batch_size': batch_size[0]},
+    {'epoch': (0, 7),
+     'size': 128,
+     'lr': (lr, lr * 2),
+     'batch_size': batch_size[0]},
+    {'epoch': (7, 13),
+     'size': 128,
+     'lr': (lr * 2, lr / 4),
+     'batch_size': batch_size[0]},
+    {'epoch': 13,
+     'size': 224,
+     'batch_size': batch_size[1],
+     'min_scale': 0.087},
+    {'epoch': (13, 22),
+     'size': 224,
+     'lr': (lr * batch_size_scale[1], lr / 10 * batch_size_scale[1]),
+     'batch_size': batch_size[1],
+     'min_scale': 0.087},
+    {'epoch': (22, 25),
+     'size': 224,
+     'lr': (lr / 10 * batch_size_scale[1], lr / 100 * batch_size_scale[1]),
+     'batch_size': batch_size[1],
+     'min_scale': 0.087},
+    {'epoch': 25,
+     'size': 288,
+     'batch_size': batch_size[2],
+     'min_scale': 0.5},
+    {'epoch': (25, 28),
+     'size': 288,
+     'lr': (lr / 100 * batch_size_scale[2], lr / 1000 * batch_size_scale[2]),
+     'batch_size': batch_size[1],
+     'min_scale': 0.5}
 ]
 
 
@@ -181,7 +204,7 @@ def train(train_loader, model, criterion, optimizer, scheduler, epoch):
     batch_size = scheduler.get_current_batch_size(epoch)
 
     tq = tqdm.tqdm(total=(len(train_loader) * batch_size))
-    tq.set_description('Epoch {}, lr {}'.format(epoch, lr))
+    tq.set_description(f'Epoch {epoch}')
 
     for i, (inputs, targets) in enumerate(train_loader):
         scheduler.update_lr(epoch, i + 1, len(train_loader))
@@ -226,7 +249,8 @@ def train(train_loader, model, criterion, optimizer, scheduler, epoch):
 
         tq.update(batch_size)
 
-        output_string = f'{losses.average:.4f} Acc@1 = {top1.average:.3f} Acc@5 = {top5.average:.3f}'
+        lr = scheduler.get_lr(epoch, i + 1, len(train_loader))
+        output_string = f'{losses.average:.4f} Acc@1 = {top1.average:.3f} Acc@5 = {top5.average:.3f} lr = {lr)}'
 
         tq.set_postfix(loss=output_string)
 
@@ -317,8 +341,6 @@ class Scheduler:
         lr = self.get_lr(epoch, batch_num, batch_tot)
         if self.current_lr == lr:
             return
-        if (batch_num == 1) or (batch_num == batch_tot):
-            print(f'Changing LR from {self.current_lr} to {lr}')
 
         self.current_lr = lr
         for param_group in self.optimizer.param_groups:
