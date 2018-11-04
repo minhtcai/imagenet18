@@ -245,7 +245,7 @@ def validate(val_loader, model, criterion):
             inputs = inputs.cuda()
 
             output = model(inputs)
-            loss = criterion(output, target).data
+            loss = criterion(output, target.cuda()).data
 
             batch_size = inputs.size(0)
             top1acc, top5acc = accuracy(output.data, target, topk=(1, 5))
