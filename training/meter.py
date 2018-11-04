@@ -5,49 +5,28 @@ import time
 class AverageMeter(object):
     """Computes and stores the average and current value."""
 
-    def __init__(self, avg_mom=0.5):
-        self.avg_mom = avg_mom
+    def __init__(self, average_momentum=0.5):
+        self.average_momentum = average_momentum
         self.reset()
 
     def reset(self):
-        self.val = 0
-        self.avg = 0  # running average of whole epoch
-        self.smooth_avg = 0
+        self.value = 0
+        self.average = 0  # running average of whole epoch
+        self.smooth_average = 0
         self.sum = 0
         self.count = 0
 
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
+    def update(self, value, n=1):
+        self.value = value
+        self.sum += value * n
         self.count += n
-        self.smooth_avg = val if self.count == 0 else self.avg * self.avg_mom + val * (1 - self.avg_mom)
-        self.avg = self.sum / self.count
 
+        if self.count == 0:
+            self.smooth_average = value
+        else:
+            self.smooth_average = self.average * self.average_momentum + value * (1 - self.average_momentum)
 
-class NetworkMeter:
-    def __init__(self):
-        self.recv_meter = AverageMeter()
-        self.transmit_meter = AverageMeter()
-        self.last_recv_bytes, self.last_transmit_bytes = network_bytes()
-        self.last_log_time = time.time()
-
-    def update_bandwidth(self):
-        time_delta = time.time() - self.last_log_time
-        recv_bytes, transmit_bytes = network_bytes()
-
-        recv_delta = recv_bytes - self.last_recv_bytes
-        transmit_delta = transmit_bytes - self.last_transmit_bytes
-
-        # turn into Gbps
-        recv_gbit = 8 * recv_delta / time_delta / 1e9
-        transmit_gbit = 8 * transmit_delta / time_delta / 1e9
-        self.recv_meter.update(recv_gbit)
-        self.transmit_meter.update(transmit_gbit)
-
-        self.last_log_time = time.time()
-        self.last_recv_bytes = recv_bytes
-        self.last_transmit_bytes = transmit_bytes
-        return recv_gbit, transmit_gbit
+        self.average = self.sum / self.count
 
 
 class TimeMeter:

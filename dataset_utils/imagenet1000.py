@@ -28,6 +28,7 @@ def process_file(xml_file_path):
     class_folder.mkdir(exist_ok=True)
 
     old_image_path = image_path / file_name
+
     new_image_path = class_folder / file_name
 
     shutil.copy(str(old_image_path), str(new_image_path))
@@ -35,8 +36,7 @@ def process_file(xml_file_path):
 
 def parse_args():
     """Parse input arguments."""
-    parser = argparse.ArgumentParser(description='Train a X-RCNN network')
-
+    parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--val_path', required=True, type=Path,
                         help='Path where validation images will be stored.')
     parser.add_argument('-i', '--image_path', required=True, type=Path,

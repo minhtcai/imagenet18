@@ -251,7 +251,7 @@ def train(trn_loader, model, criterion, optimizer, scheduler, epoch):
         if args.local_rank == 0 and should_print:
             tb.log_memory()
             tb.log_trn_times(timer.batch_time.val, timer.data_time.val, input.size(0))
-            tb.log_trn_loss(losses.val, top1.val, top5.val)
+            tb.log_trn_loss(losses.value, top1.value, top5.value)
 
             recv_gbit, transmit_gbit = net_meter.update_bandwidth()
             tb.log("sizes/batch_total", batch_total)
@@ -307,10 +307,10 @@ def validate(val_loader, model, criterion, epoch, start_time):
                       f'Acc@5 {top5.val:.3f} ({top5.avg:.3f})')
             log.verbose(output)
 
-    tb.log_eval(top1.avg, top5.avg, time.time() - eval_start_time)
+    tb.log_eval(top1.average, top5.average, time.time() - eval_start_time)
     tb.log('epoch', epoch)
 
-    return top1.avg, top5.avg
+    return top1.average, top5.average
 
 
 def distributed_predict(input, target, model, criterion):
