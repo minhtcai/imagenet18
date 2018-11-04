@@ -26,7 +26,6 @@ import albumentations as albu
 
 lr = 1.0
 batch_size = [512, 224, 128]  # largest batch size that fits in memory for each image size
-# batch_size = [64, 224, 128]  # largest batch size that fits in memory for each image size
 
 batch_size_scale = [x / batch_size[0] for x in batch_size]
 
@@ -63,7 +62,7 @@ phases = [
     {'epoch': (25, 28),
      'size': 288,
      'lr': (lr / 100 * batch_size_scale[2], lr / 1000 * batch_size_scale[2]),
-     'batch_size': batch_size[1],
+     'batch_size': batch_size[2],
      'min_scale': 0.5}
 ]
 
@@ -190,7 +189,7 @@ def main():
             save_checkpoint(epoch, model, best_top5, optimizer, is_best=True, filename='model_best.pth.tar')
         phase = scheduler.get_current_phase(epoch)
         if phase:
-            save_checkpoint(epoch, model, best_top5, optimizer, filename=f'sz{phase["batch_size"]}_checkpoint.path.tar')
+            save_checkpoint(epoch, model, best_top5, optimizer, filename=f'sz{phase["size"]}_checkpoint.path.tar')
 
 
 def train(train_loader, model, criterion, optimizer, scheduler, epoch):
