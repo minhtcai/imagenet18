@@ -25,7 +25,7 @@ from training.meter import AverageMeter
 import albumentations as albu
 
 lr = 1.0
-batch_size = [512, 224, 128]  # largest batch size that fits in memory for each image size
+batch_size = [1024, 224, 128]  # largest batch size that fits in memory for each image size
 
 batch_size_scale = [x / batch_size[0] for x in batch_size]
 
@@ -33,33 +33,33 @@ phases = [
     {'epoch': 0,
      'size': 128,
      'batch_size': batch_size[0]},
-    {'epoch': (0, 7),
+    {'epoch': (0, 10),
      'size': 128,
      'lr': (lr, lr * 2),
      'batch_size': batch_size[0]},
-    {'epoch': (7, 13),
+    {'epoch': (10, 20),
      'size': 128,
      'lr': (lr * 2, lr / 4),
      'batch_size': batch_size[0]},
-    {'epoch': 13,
+    {'epoch': 20,
      'size': 224,
      'batch_size': batch_size[1],
      'min_scale': 0.087},
-    {'epoch': (13, 22),
+    {'epoch': (20, 30),
      'size': 224,
      'lr': (lr * batch_size_scale[1], lr / 10 * batch_size_scale[1]),
      'batch_size': batch_size[1],
      'min_scale': 0.087},
-    {'epoch': (22, 25),
+    {'epoch': (30, 40),
      'size': 224,
      'lr': (lr / 10 * batch_size_scale[1], lr / 100 * batch_size_scale[1]),
      'batch_size': batch_size[1],
      'min_scale': 0.087},
-    {'epoch': 25,
+    {'epoch': 40,
      'size': 288,
      'batch_size': batch_size[2],
      'min_scale': 0.5},
-    {'epoch': (25, 28),
+    {'epoch': (40, 50),
      'size': 288,
      'lr': (lr / 100 * batch_size_scale[2], lr / 1000 * batch_size_scale[2]),
      'batch_size': batch_size[2],
@@ -249,7 +249,7 @@ def train(train_loader, model, criterion, optimizer, scheduler, epoch):
         tq.update(batch_size)
 
         lr = scheduler.get_lr(epoch, i + 1, len(train_loader))
-        output_string = f'{losses.average:.4f} Acc@1 = {top1.average:.3f} Acc@5 = {top5.average:.3f} lr = {lr}'
+        output_string = f'{losses.average:.4f} Acc@1 = {top1.average:.3f} Acc@5 = {top5.average:.3f} lr = {lr:.3f}'
 
         tq.set_postfix(loss=output_string)
 
